@@ -1,0 +1,1 @@
+#define HOGE 9999
