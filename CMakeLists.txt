@@ -2,7 +2,7 @@
 project(gnss_research_raspi LANGUAGES C)
 cmake_minimum_required(VERSION 3.10)
 
-# 実行ファイルを定義
+# 実行ターゲットを定義
 add_executable(app main.c)
 
 # ライブラリを定義、　appターゲットにリンク
