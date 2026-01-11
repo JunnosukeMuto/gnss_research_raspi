@@ -1,7 +1,7 @@
-from binascii import Incomplete
 import threading
 import queue
 import os
+import traceback
 import requests
 import math
 import time
@@ -83,8 +83,8 @@ def ntrip_thread(lat: float, lon: float, que: queue.Queue, stop: threading.Event
                 except queue.Full:
                     pass
 
-    except Exception as e:
-        print(e)
+    except Exception:
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
@@ -101,7 +101,7 @@ if __name__ == "__main__":
 
     try:
         while True:
-            chunk: Incomplete = que.get()
+            chunk: bytes = que.get()
             bytesps += len(chunk)
             now = time.time()
 
