@@ -25,6 +25,9 @@ def main():
     uart_path = str(os.getenv("UART_PATH_PROD"))
 
     # まずI2CスレッドとNMEAパーススレッドだけ開始
+
+    print("Starting I2C thread and NMEA thread...")
+
     threads = [
         threading.Thread(target=i2c_thread, args=(que_i2c_nmea, stop, i2c_path, i2c_addr)),
         threading.Thread(target=nmea_thread, args=(que_i2c_nmea, que_nmea_out, stop)),
@@ -33,6 +36,9 @@ def main():
     for t in threads:
         t.start()
 
+    print("Successed!")
+    print("Acquiring non-PTK position...")
+
 
     try:
 
@@ -40,6 +46,7 @@ def main():
         while True:
             try:
                 d: dict[str, Any] = que_nmea_out.get(timeout=1)
+                print(f"Successed!")
                 print(d)
                 break
 
@@ -51,12 +58,19 @@ def main():
         lon_init = float(d['lon'])
 
         # ntripスレッドとuartでRTCMを送るスレッド開始
+
+        print("Starting NTRIP thread and UART thread...")
+
         t1 = threading.Thread(target=ntrip_thread, args=(lat_init, lon_init, que_ntrip_uart, stop))
         t2 = threading.Thread(target=uart_thread, args=(que_ntrip_uart, stop, uart_path))
         t1.start()
         t2.start()
         threads.append(t1)
         threads.append(t2)
+
+        print("Successed!")
+        print("Acquiring RTK position...")
+        print("==========================")
 
         # システムPythonで動くbluetoothスレッドにAF_UNIXソケットで送信
         while True:
