@@ -16,21 +16,44 @@ def uart_thread(que: queue.Queue, stop: threading.Event, uart_path: str, debug: 
 
     attrs = termios.tcgetattr(fd)
 
-    attrs[0] &= ~(termios.IXON | termios.IXOFF | termios.IXANY)
-    attrs[1] &= ~(termios.OPOST)
+    ###############
+    # cfmakeraw() 
+    ###############
 
-    attrs[2] &= ~termios.PARENB
-    attrs[2] &= ~termios.CSTOPB
-    attrs[2] &= ~termios.CSIZE
-    attrs[2] |= termios.CS8
-    attrs[2] |= termios.CREAD | termios.CLOCAL
+    # 消したいフラグだけ消し、立てたいフラグだけ立て、残りはfdのデフォルトに任せる
+    iflag = attrs[0]
+    oflag = attrs[1]
+    cflag = attrs[2]
+    lflag = attrs[3]
+    ispeed = attrs[4]
+    ospeed = attrs[5]
+    cc = attrs[6]
 
-    attrs[3] &= ~(termios.ICANON | termios.ECHO | termios.ISIG)
+    iflag &= ~(termios.IGNBRK | termios.BRKINT | termios.PARMRK | termios.ISTRIP
+               | termios.INLCR | termios.IGNCR | termios.ICRNL | termios.IXON)
+    oflag &= ~termios.OPOST
+    lflag &= ~(termios.ECHO | termios.ECHONL | termios.ICANON | termios.ISIG | termios.IEXTEN)
+    cflag &= ~(termios.CSIZE | termios.PARENB)
+    cflag |= termios.CS8
 
-    attrs[4] = termios.B38400
-    attrs[5] = termios.B38400
+    ######################
+    # GPS-RTK2ボード用設定
+    ######################
 
-    termios.tcsetattr(fd, termios.TCSANOW, attrs)
+    # no parity bit, 1 stop bit
+    cflag &= ~(termios.PARENB | termios.CSTOPB)
+
+    # 受信有効、モデム制御線無視
+    cflag |= termios.CREAD | termios.CLOCAL
+
+    # 38400 baud
+    ispeed = termios.B38400
+    ospeed = termios.B38400
+
+    ########################
+
+    new_attrs = [iflag, oflag, cflag, lflag, ispeed, ospeed, cc]
+    termios.tcsetattr(fd, termios.TCSANOW, new_attrs)
 
     try:
         while not stop.is_set():
