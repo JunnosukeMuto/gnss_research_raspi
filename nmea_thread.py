@@ -177,4 +177,5 @@ if __name__ == "__main__":
 
     except KeyboardInterrupt:
         stop.set()
+        t1.join()
         t2.join()
