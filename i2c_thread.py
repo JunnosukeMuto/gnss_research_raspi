@@ -12,7 +12,7 @@ I2C_SLAVE = 0x0703  # linux/i2c-dev.h
 READ_SIZE = 256
 
 
-def i2c_thread(que: queue.Queue, stop: threading.Event, i2c_path: str, i2c_addr: int, debug: bool):
+def i2c_thread(que: queue.Queue, stop: threading.Event, i2c_path: str, i2c_addr: int, debug: bool = False):
 
     try:
         fd = os.open(i2c_path, os.O_RDWR)
