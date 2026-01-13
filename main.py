@@ -1,6 +1,8 @@
+import csv
 import os
 import threading
 import queue
+import time
 from typing import Any
 
 from dotenv import load_dotenv
@@ -73,13 +75,19 @@ def main():
         print("==========================")
 
         # システムPythonで動くbluetoothスレッドにAF_UNIXソケットで送信
-        while True:
-            try:
-                d: dict[str, Any] = que_nmea_out.get(timeout=1)
-                print(d)
+        now = time.time()
+        with open(f"{now}.csv", "w") as f:
+            writer = csv.DictWriter(f, ['seq', 'lat', 'lon', 'alt', 'fix'])
+            writer.writeheader()
 
-            except queue.Empty:
-                pass
+            while True:
+                try:
+                    d: dict[str, Any] = que_nmea_out.get(timeout=1)
+                    print(d)
+                    writer.writerow(d)
+
+                except queue.Empty:
+                    pass
         
 
     except KeyboardInterrupt:
