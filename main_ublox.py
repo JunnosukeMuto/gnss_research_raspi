@@ -37,7 +37,6 @@ try:
         DEBUG_UBLOX = True
 
     NTRIP_URL = getenv("NTRIP_URL")
-    NTRIP_PORT = int(getenv("NTRIP_PORT"))
     NTRIP_USER = getenv("NTRIP_USER")
     NTRIP_PASS = getenv("NTRIP_PASS")
 
