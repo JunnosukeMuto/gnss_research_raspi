@@ -135,7 +135,7 @@ def main():
             while True:
                 try:
                     d: dict[str, Any] = que_nmea_out.get(timeout=1)
-                    if type(d) != dict[str, Any]:
+                    if type(d) is not dict:
                         continue
                     
                     # CSVログ出力
