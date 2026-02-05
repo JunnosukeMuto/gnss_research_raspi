@@ -61,7 +61,7 @@ except TypeError as e:
 
 
 if DEBUG_UBLOX:
-    LOGDIR = Path("/tmp") / "gnss-research/ublox/"
+    LOGDIR = Path("/tmp")
 
 
 def main():
