@@ -33,35 +33,6 @@ SOCK_PATH           = "/run/gnss-research/ble.sock"
 
 
 ####################################
-# Interface
-####################################
-
-class ObjectManager(dbus.Interface):
-
-    def __init__(self, object: dbus.proxies.ProxyObject):
-        super().__init__(object, DBUS_OM_IFACE)
-
-    def GetManagedObjects(self) -> dict[str, dict[str, dict[str, Any]]]:
-        objs = super().GetManagedObjects()
-        if type(objs) != dict[str, dict[str, dict[str, Any]]]:
-            raise TypeError
-        
-        return objs
-    
-
-class GattManager(dbus.Interface):
-    """
-    https://github.com/bluez/bluez/blob/master/doc/org.bluez.GattManager.rst
-    """
-
-    def __init__(self, object: dbus.proxies.ProxyObject):
-        super().__init__(object, GATT_MANAGER_IFACE)
-
-    def RegisterApplication(self, application: str, options: dict = {}):
-        super().RegisterApplication(application, options)
-
-
-####################################
 # Gatt Exceptions
 ####################################
 
@@ -212,7 +183,7 @@ def main():
     # https://www.bluez.org/bluez-5-api-introduction-and-porting-guide/
     # org.bluezのルートオブジェクトはObjectManager
     bluez_root_obj = bus.get_object(BLUEZ_NAME, '/')
-    bluez_om = ObjectManager(bluez_root_obj)
+    bluez_om = dbus.Interface(bluez_root_obj, DBUS_OM_IFACE)
     
     # org.bluezの公開するオブジェクトの中にGattManager1を実装したものがないか見つける
     bluez_obj_tree = bluez_om.GetManagedObjects()
@@ -228,7 +199,7 @@ def main():
         return
     
     # GattManager1を発見
-    gm = GattManager(found)
+    gm = dbus.Interface(found, GATT_MANAGER_IFACE)
 
     # gnssサービスと通信するUNIXドメインソケット
     if os.path.exists(SOCK_PATH):
