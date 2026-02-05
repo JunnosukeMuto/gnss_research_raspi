@@ -62,7 +62,7 @@ echo "[3/7] Installing environment files..."
 
 # 環境設定ディレクトリを作成
 install -d -o root -g root -m 755 ${ENVDIR}
-install -o root -g root -m 644 .env.example ${ENVDIR}/.env
+install -o root -g root -m 644 .env.example ${ENVDIR}/gnss-research.env
 
 ##########################################################################
 
