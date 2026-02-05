@@ -23,7 +23,7 @@ load_dotenv()
 DEBUG_UBLOX = False
 
 
-def getenv(key: str, path: bool) -> str:
+def getenv(key: str, path: bool = False) -> str:
     val = os.getenv(key)
     if val == None:
         raise ValueError
