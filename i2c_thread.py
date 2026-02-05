@@ -5,8 +5,6 @@ import queue
 import os
 import traceback
 
-from dotenv import load_dotenv
-
 
 I2C_SLAVE = 0x0703  # linux/i2c-dev.h
 READ_SIZE = 256
@@ -48,7 +46,10 @@ if __name__ == "__main__":
     que = queue.Queue()
     stop = threading.Event()
 
+    from dotenv import load_dotenv
+
     load_dotenv()
+    
     i2c_path = os.getenv("I2C_PATH_DEV")
     i2c_addr = int(os.getenv("I2C_ADDR"), 16)
 

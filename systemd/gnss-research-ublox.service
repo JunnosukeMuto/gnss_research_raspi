@@ -1,0 +1,15 @@
+[Unit]
+Description=Deamon for GNSS Research by jmuto, receives data from u-blox ZED-F9P.
+PartOf=gnss-research.target
+After=network.target gnss-research-ble.service
+BindsTo=gnss-research-ble.service
+
+[Service]
+ExecStart=/opt/gnss-research/venv/bin/python /opt/gnss-research/main_ublox.py
+Restart=always
+User=gnssresearch
+Group=gnssresearch
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/etc/gnss-research/gnss-research.env
+LogsDirectory=gnss-research/ublox
+RuntimeDirectory=gnss-research/ublox

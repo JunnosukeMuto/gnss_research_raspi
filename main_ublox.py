@@ -1,0 +1,144 @@
+import csv
+from datetime import datetime
+import os
+from pathlib import Path
+import signal
+import socket
+import struct
+import sys
+import threading
+import queue
+import traceback
+from typing import Any
+
+from dotenv import load_dotenv
+
+from i2c_thread import i2c_thread
+from nmea_thread import nmea_thread
+from ntrip_thread import ntrip_thread
+from uart_thread import uart_thread
+
+load_dotenv()
+
+I2C_PATH = str(os.getenv("I2C_PATH_PROD"))
+I2C_ADDR = int(os.getenv("I2C_ADDR"), 16)
+UART_PATH = str(os.getenv("UART_PATH_PROD"))
+
+LOGDIR = Path(os.getenv("LOGDIR")) / "ublox/"
+SOCK_PATH = str(os.getenv("SOCK_PATH"))
+
+
+def main():
+    signal.signal(signal.SIGTERM, handle_sigterm)
+
+    que_i2c_nmea = queue.Queue()
+    que_nmea_out = queue.Queue()
+    que_ntrip_uart = queue.Queue()
+
+    stop = threading.Event()
+
+    # まずI2CスレッドとNMEAパーススレッドだけ開始
+    print("Starting I2C thread and NMEA thread...")
+
+    threads = [
+        threading.Thread(target=i2c_thread, args=(que_i2c_nmea, stop, I2C_PATH, I2C_ADDR)),
+        threading.Thread(target=nmea_thread, args=(que_i2c_nmea, que_nmea_out, stop)),
+    ]
+
+    for t in threads:
+        t.start()
+
+
+    print("Acquiring non-RTK position...")
+
+    try:
+        # まず大まかな緯度経度を取得する
+        while True:
+            try:
+                d: dict[str, Any] = que_nmea_out.get(timeout=1)
+                break
+
+            except queue.Empty:
+                pass
+
+
+        lat_init = float(d['lat'])
+        lon_init = float(d['lon'])
+
+
+        # ntripスレッドとuartでRTCMを送るスレッド開始
+        print(d)
+        print("Starting NTRIP thread and UART thread...")
+
+        t1 = threading.Thread(target=ntrip_thread, args=(lat_init, lon_init, que_ntrip_uart, stop))
+        t2 = threading.Thread(target=uart_thread, args=(que_ntrip_uart, stop, UART_PATH))
+        t1.start()
+        t2.start()
+        threads.append(t1)
+        threads.append(t2)
+
+
+        # ログファイルとBLEサービスに接続
+        print("Connecting to /var/log/ and ble deamon...")
+
+        logfile = LOGDIR / f"{datetime.now().isoformat()}.csv"
+
+        with logfile.open('a') as f, \
+             socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as s:
+
+            writer = csv.DictWriter(f, ['seq', 'lat', 'lon', 'alt', 'quality'])
+            writer.writeheader()
+
+            # クライアントとして接続
+            s.connect((SOCK_PATH))
+
+            # RTK測位データの取得開始
+            print("Acquiring RTK position data...")
+
+            while True:
+                try:
+                    d: dict[str, Any] = que_nmea_out.get(timeout=1)
+                    if type(d) != dict[str, Any]:
+                        continue
+                    
+                    # CSVログ出力
+                    writer.writerow(d)
+
+                    # UNIXドメインソケットでデータ送出
+                    payload = struct.pack(
+                        "<HBiii",               # リトルエンディアン,ushort,uchar,int,int,int
+                        d["seq"] & 0xFFFF,      # 2byteでマスク（超過で例外）
+                        d["quality"] & 0xFF,    # 1byte
+                        int(d["lat"] * 1e7),
+                        int(d["lon"] * 1e7),    # 180e7 < 2147483648
+                        int(d["alt"] * 1e3),    # m -> mm
+                    )
+                    s.sendall(payload)
+
+                except queue.Empty:
+                    pass
+        
+
+    except KeyboardInterrupt:
+        pass
+
+    except ValueError:
+        traceback.print_exc()
+        pass
+
+    except SystemExit:
+        pass
+
+    finally:
+        print('Gracefully finishing...')
+        stop.set()
+        for t in threads:
+            t.join()
+
+
+def handle_sigterm():
+    sys.exit()
+
+
+if __name__ == "__main__":
+    main()

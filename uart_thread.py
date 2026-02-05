@@ -5,8 +5,6 @@ import termios
 import time
 import traceback
 
-from dotenv import load_dotenv
-
 from ntrip_thread import ntrip_thread
 
 
@@ -84,7 +82,10 @@ if __name__ == "__main__":
     bytesps = 0
     last = time.time()
 
+    from dotenv import load_dotenv
+
     load_dotenv()
+
     uart_path = str(os.getenv("UART_PATH_DEV"))
 
     t1 = threading.Thread(target=ntrip_thread, args=(lat, lon, que, stop))

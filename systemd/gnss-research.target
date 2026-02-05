@@ -1,0 +1,6 @@
+[Unit]
+Description=Deamon for GNSS Research by jmuto
+Wants=gnss-research-ublox.service gnss-research-ble.service
+
+[Install]
+WantedBy=multi-user.target

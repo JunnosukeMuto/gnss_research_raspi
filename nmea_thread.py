@@ -6,8 +6,6 @@ import os
 import traceback
 from typing import Any
 
-from dotenv import load_dotenv
-
 from i2c_thread import i2c_thread
 
 
@@ -93,7 +91,7 @@ def nmea_thread(que_in: queue.Queue, que_out: queue.Queue, stop: threading.Event
                 d['lat'] = dm2dd(fields[2], fields[3])
                 d['lon'] = dm2dd(fields[4], fields[5])
                 d['alt'] = float_nl(fields[9])
-                d['fix'] = int_nl(fields[6])
+                d['quality'] = int_nl(fields[6])
             else:
                 continue
 
@@ -158,7 +156,10 @@ if __name__ == "__main__":
     que_out = queue.Queue()
     stop = threading.Event()
 
+    from dotenv import load_dotenv
+
     load_dotenv()
+    
     i2c_path = os.getenv("I2C_PATH_DEV")
     i2c_addr = int(os.getenv("I2C_ADDR"), 16)
 

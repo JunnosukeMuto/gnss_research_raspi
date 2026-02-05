@@ -1,0 +1,14 @@
+[Unit]
+Description=Deamon for GNSS Research by jmuto, notifies data from GNSS devices via BLE.
+PartOf=gnss-research.target
+After=bluetooth.target
+
+[Service]
+ExecStart=/usr/bin/python3 /opt/gnss-research/main_ble.py
+Restart=always
+User=gnssresearch
+Group=gnssresearch
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/etc/gnss-research/gnss-research.env
+LogsDirectory=gnss-research/ble
+RuntimeDirectory=gnss-research/ble
