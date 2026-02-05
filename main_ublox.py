@@ -27,12 +27,15 @@ def getenv(key: str, path: bool) -> str:
     val = os.getenv(key)
     if val == None:
         raise ValueError
-    if path and not os.path.exists(val):
+    if path and not os.path.exists(val) and not DEBUG_UBLOX:
         raise FileNotFoundError
     return val
 
 
 try:
+    if int(getenv("DEBUG_UBLOX")) == 1:
+        DEBUG_UBLOX = True
+
     NTRIP_URL = getenv("NTRIP_URL")
     NTRIP_PORT = int(getenv("NTRIP_PORT"))
     NTRIP_USER = getenv("NTRIP_USER")
@@ -44,9 +47,6 @@ try:
 
     LOGDIR = Path(getenv("LOGDIR", path=True)) / "ublox/"
     SOCK_PATH = getenv("SOCK_PATH", path=True)
-
-    if int(getenv("DEBUG_UBLOX")) == 1:
-        DEBUG_UBLOX = True
 
 except ValueError as e:
     print(e)
