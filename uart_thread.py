@@ -86,10 +86,13 @@ if __name__ == "__main__":
 
     load_dotenv()
 
-    uart_path = str(os.getenv("UART_PATH_DEV"))
+    NTRIP_URL = os.getenv("NTRIP_URL")
+    NTRIP_USER = os.getenv("NTRIP_USER")
+    NTRIP_PASS = os.getenv("NTRIP_PASS")
+    UART_PATH = os.getenv("UART_PATH_DEV")
 
-    t1 = threading.Thread(target=ntrip_thread, args=(lat, lon, que, stop))
-    t2 = threading.Thread(target=uart_thread, args=(que, stop, uart_path, True))
+    t1 = threading.Thread(target=ntrip_thread, args=(que, stop, lat, lon, NTRIP_URL, NTRIP_USER, NTRIP_PASS))
+    t2 = threading.Thread(target=uart_thread, args=(que, stop, UART_PATH, True))
     t1.start()
     t2.start()
 

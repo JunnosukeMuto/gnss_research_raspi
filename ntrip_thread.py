@@ -5,25 +5,22 @@ import traceback
 import requests
 import math
 import time
-from dotenv import load_dotenv
 
-load_dotenv()
-
-NTRIP_HOST = str(os.getenv("NTRIP_HOST"))
-NTRIP_PORT = int(os.getenv("NTRIP_PORT"))
-NTRIP_USER = str(os.getenv("NTRIP_USER"))
-NTRIP_PASS = str(os.getenv("NTRIP_PASS"))
 
 MP_IDX = 1
 LAT_IDX = 9
 LON_IDX = 10
 
 
-def ntrip_thread(lat: float, lon: float, que: queue.Queue, stop: threading.Event):
+def ntrip_thread(que: queue.Queue, stop: threading.Event, lat: float, lon: float, url: str, username: str, password: str):
+
+    NTRIP_URL = url.removesuffix('/')
+    NTRIP_USER = username
+    NTRIP_PASS = password
 
     try:
         res = requests.get(
-            url=NTRIP_HOST,
+            url=NTRIP_URL,
             auth=(NTRIP_USER, NTRIP_PASS),
             headers={"Ntrip-Version" : "Ntrip/2.0"},
             timeout=10.0
@@ -57,7 +54,7 @@ def ntrip_thread(lat: float, lon: float, que: queue.Queue, stop: threading.Event
         # print("connecting...")
             
         with requests.get(
-            url=f"{NTRIP_HOST}/{mountpoint}",
+            url=f"{NTRIP_URL}/{mountpoint}",
             auth=(NTRIP_USER, NTRIP_PASS),
             headers={
                 "Ntrip-Version" : "Ntrip/2.0",
@@ -96,7 +93,15 @@ if __name__ == "__main__":
     bytesps = 0
     last = time.time()
 
-    t = threading.Thread(target=ntrip_thread, args=(lat, lon, que, stop))
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
+    NTRIP_URL = os.getenv("NTRIP_URL")
+    NTRIP_USER = os.getenv("NTRIP_USER")
+    NTRIP_PASS = os.getenv("NTRIP_PASS")
+
+    t = threading.Thread(target=ntrip_thread, args=(que, stop, lat, lon, NTRIP_URL, NTRIP_USER, NTRIP_PASS))
     t.start()
 
     try:

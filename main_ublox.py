@@ -20,12 +20,49 @@ from uart_thread import uart_thread
 
 load_dotenv()
 
-I2C_PATH = str(os.getenv("I2C_PATH_PROD"))
-I2C_ADDR = int(os.getenv("I2C_ADDR"), 16)
-UART_PATH = str(os.getenv("UART_PATH_PROD"))
+DEBUG_UBLOX = False
 
-LOGDIR = Path(os.getenv("LOGDIR")) / "ublox/"
-SOCK_PATH = str(os.getenv("SOCK_PATH"))
+
+def getenv(key: str, path: bool) -> str:
+    val = os.getenv(key)
+    if val == None:
+        raise ValueError
+    if path and not os.path.exists(val):
+        raise FileNotFoundError
+    return val
+
+
+try:
+    NTRIP_URL = getenv("NTRIP_URL")
+    NTRIP_PORT = int(getenv("NTRIP_PORT"))
+    NTRIP_USER = getenv("NTRIP_USER")
+    NTRIP_PASS = getenv("NTRIP_PASS")
+
+    I2C_PATH = getenv("I2C_PATH_PROD", path=True)
+    I2C_ADDR = int(getenv("I2C_ADDR"), 16)
+    UART_PATH = getenv("UART_PATH_PROD", path=True)
+
+    LOGDIR = Path(getenv("LOGDIR", path=True)) / "ublox/"
+    SOCK_PATH = getenv("SOCK_PATH", path=True)
+
+    if int(getenv("DEBUG_UBLOX")) == 1:
+        DEBUG_UBLOX = True
+
+except ValueError as e:
+    print(e)
+    sys.exit(1)
+
+except FileNotFoundError as e:
+    print(e)
+    sys.exit(1)
+
+except TypeError as e:
+    print(e)
+    sys.exit(1)
+
+
+if DEBUG_UBLOX:
+    LOGDIR = Path("/tmp") / "gnss-research/ublox/"
 
 
 def main():
@@ -70,7 +107,7 @@ def main():
         print(d)
         print("Starting NTRIP thread and UART thread...")
 
-        t1 = threading.Thread(target=ntrip_thread, args=(lat_init, lon_init, que_ntrip_uart, stop))
+        t1 = threading.Thread(target=ntrip_thread, args=(que_ntrip_uart, stop, lat_init, lon_init, NTRIP_URL, NTRIP_USER, NTRIP_PASS))
         t2 = threading.Thread(target=uart_thread, args=(que_ntrip_uart, stop, UART_PATH))
         t1.start()
         t2.start()
@@ -90,7 +127,8 @@ def main():
             writer.writeheader()
 
             # クライアントとして接続
-            s.connect((SOCK_PATH))
+            if not DEBUG_UBLOX:
+                s.connect((SOCK_PATH))
 
             # RTK測位データの取得開始
             print("Acquiring RTK position data...")
@@ -113,7 +151,11 @@ def main():
                         int(d["lon"] * 1e7),    # 180e7 < 2147483648
                         int(d["alt"] * 1e3),    # m -> mm
                     )
-                    s.sendall(payload)
+                    
+                    if not DEBUG_UBLOX:
+                        s.sendall(payload)
+                    else:
+                        print(d)
 
                 except queue.Empty:
                     pass
