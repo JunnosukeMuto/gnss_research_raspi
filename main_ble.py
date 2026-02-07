@@ -1,9 +1,17 @@
 #!/usr/bin/python3
 
+# https://www.bluetooth.com/specifications/specs/core-specification-6-0/
 # https://github.com/bluez/bluez/blob/master/test/example-gatt-server
+# https://github.com/bluez/bluez/blob/master/test/example-advertisement
+# https://dbus.freedesktop.org/doc/dbus-specification.html
+# https://dbus.freedesktop.org/doc/dbus-python/index.html
+# https://pygobject.gnome.org/
 
 import os
+import signal
 import socket
+import sys
+import traceback
 from typing import Any
 from gi.repository import GLib
 
@@ -18,10 +26,14 @@ BLUEZ_NAME          = "org.bluez"
 GATT_MANAGER_IFACE  = "org.bluez.GattManager1"
 GATT_SERVICE_IFACE  = "org.bluez.GattService1"
 GATT_CHRC_IFACE     = "org.bluez.GattCharacteristic1"
+LE_AD_IFACE         = "org.bluez.LEAdvertisement1"
+LE_AD_MANAGER_IFACE = "org.bluez.LEAdvertisingManager1"
 DBUS_OM_IFACE       = "org.freedesktop.DBus.ObjectManager"
 DBUS_PROP_IFACE     = "org.freedesktop.DBus.Properties"
 
 APP_PATH            = "/com/example/gnss-research"
+AD_PATH             = "/com/example/gnss-research/advertisement"
+AD_LOCAL_NAME       = "gnss-research"
 POS_SERVICE_PATH    = "/com/example/gnss-research/position/service0"
 POS_SERVICE_UUID    = "70787d4e-af36-4bfb-901b-37133b5191bb"
 POS_CHRC_PATH       = "/com/example/gnss-research/position/service0/char0"
@@ -111,6 +123,10 @@ class GattCharacteristic(dbus.service.Object):
     @dbus.service.signal(DBUS_PROP_IFACE, signature='sa{sv}as')
     def PropertiesChanged(self, interface: str, changed: dict[str, Any], invalidated: list[str]):
         pass
+
+    @dbus.service.method(DBUS_PROP_IFACE, in_signature='s', out_signature='')
+    def GetAll(self, interface):
+        return self.get_properties()[GATT_CHRC_IFACE]
         
 
 class GattService(dbus.service.Object):
@@ -145,6 +161,10 @@ class GattService(dbus.service.Object):
         for chrc in self.characteristics:
             result.append(chrc.path)
         return result
+    
+    @dbus.service.method(DBUS_PROP_IFACE, in_signature='s', out_signature='')
+    def GetAll(self, interface):
+        return self.get_properties()[GATT_SERVICE_IFACE]
 
 
 class Application(dbus.service.Object):
@@ -168,6 +188,40 @@ class Application(dbus.service.Object):
                 objs[c.path] = c.get_properties()
 
         return objs
+    
+
+####################################
+# LE Advertising
+####################################
+    
+
+class Advertisement(dbus.service.Object):
+    """
+    https://github.com/bluez/bluez/blob/master/doc/org.bluez.LEAdvertisement.rst
+    """
+
+    def __init__(self, conn: dbus.connection.Connection, object_path: str, service_uuids: list[str], local_name: str):
+        self.path = object_path
+        self.service_uuids = service_uuids
+        self.local_name = local_name
+        super().__init__(conn, self.path)
+
+    def get_properties(self):
+        return {
+            LE_AD_IFACE: {
+                'Type': 'peripheral',
+                'ServiceUUIDs': dbus.Array(self.service_uuids, signature='s'),
+                'LocalName': dbus.String(self.local_name),
+            }
+        }
+    
+    @dbus.service.method(LE_AD_IFACE, in_signature='', out_signature='')
+    def Release(self):
+        pass
+    
+    @dbus.service.method(DBUS_PROP_IFACE, in_signature='s', out_signature='')
+    def GetAll(self, interface):
+        return self.get_properties()[LE_AD_IFACE]
 
 
 ####################################
@@ -176,8 +230,9 @@ class Application(dbus.service.Object):
 
 
 def main():
-    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+    signal.signal(signal.SIGTERM, handle_sigterm)
 
+    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
     bus = dbus.SystemBus()
 
     # https://www.bluez.org/bluez-5-api-introduction-and-porting-guide/
@@ -185,21 +240,29 @@ def main():
     bluez_root_obj = bus.get_object(BLUEZ_NAME, '/')
     bluez_om = dbus.Interface(bluez_root_obj, DBUS_OM_IFACE)
     
-    # org.bluezの公開するオブジェクトの中にGattManager1を実装したものがないか見つける
+    # org.bluezの公開するオブジェクトからGattManager1、LEAdvertisingManager1を見つける
     bluez_obj_tree = bluez_om.GetManagedObjects()
     
-    found: dbus.proxies.ProxyObject | None = None
+    found_gm: dbus.proxies.ProxyObject | None = None
+    found_am: dbus.proxies.ProxyObject | None = None
 
     for o_path, iface_dict in bluez_obj_tree.items():
         if GATT_MANAGER_IFACE in iface_dict.keys():
-            found = bus.get_object(BLUEZ_NAME, o_path)
+            found_gm = bus.get_object(BLUEZ_NAME, o_path)
+        if LE_AD_MANAGER_IFACE in iface_dict.keys():
+            found_am = bus.get_object(BLUEZ_NAME, o_path)
 
-    if not found:
-        print("GattManager1 interface not found")
+    if not found_gm:
+        print(f"{GATT_MANAGER_IFACE} interface not found")
         return
     
-    # GattManager1を発見
-    gm = dbus.Interface(found, GATT_MANAGER_IFACE)
+    if not found_am:
+        print(f"{LE_AD_MANAGER_IFACE} interface not found")
+        return
+    
+    # 発見
+    gm = dbus.Interface(found_gm, GATT_MANAGER_IFACE)
+    am = dbus.Interface(found_am, LE_AD_MANAGER_IFACE)
 
     # gnssサービスと通信するUNIXドメインソケット
     if os.path.exists(SOCK_PATH):
@@ -213,18 +276,38 @@ def main():
     chrc = GattCharacteristic(bus, POS_CHRC_PATH, POS_CHRC_UUID, POS_SERVICE_PATH, soc)
     srv.add_chrcs([chrc])
 
-    # 自プロセス(= D-Bus service)のこのパス以下にGATTオブジェクトがあると登録
+    # Register
     app = Application(bus, APP_PATH, [srv])
+    ad = Advertisement(bus, AD_PATH, [POS_SERVICE_UUID], AD_LOCAL_NAME)
 
     try:
-        gm.RegisterApplication(app.path)
+        gm.RegisterApplication(app.path, {})
+        am.RegisterAdvertisement(ad.path, {})
     except dbus.exceptions.DBusException as e:
         print(e)
         return
 
     # メインループ
-    loop = GLib.MainLoop()
-    loop.run()
+    try:
+        loop = GLib.MainLoop()
+        loop.run()
+
+    except KeyboardInterrupt:
+        pass
+
+    except SystemExit:
+        pass
+
+    except Exception:
+        traceback.print_exc()
+
+    finally:
+        am.UnregisterAdvertisement(ad.path)
+        dbus.service.Object.remove_from_connection(ad.path)
+
+
+def handle_sigterm(signum, frame):
+    sys.exit(0)
 
 
 if __name__ == "__main__":

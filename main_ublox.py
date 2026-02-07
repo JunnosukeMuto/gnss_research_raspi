@@ -163,12 +163,11 @@ def main():
     except KeyboardInterrupt:
         pass
 
-    except ValueError:
-        traceback.print_exc()
-        pass
-
     except SystemExit:
         pass
+
+    except Exception:
+        traceback.print_exc()
 
     finally:
         print('Gracefully finishing...')
@@ -177,8 +176,8 @@ def main():
             t.join()
 
 
-def handle_sigterm():
-    sys.exit()
+def handle_sigterm(signum, frame):
+    sys.exit(0)
 
 
 if __name__ == "__main__":
