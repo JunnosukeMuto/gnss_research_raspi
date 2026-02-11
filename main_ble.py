@@ -129,12 +129,12 @@ class GattCharacteristic(dbus.service.Object):
     def PropertiesChanged(self, interface: str, changed: dict[str, Any], invalidated: list[str]):
         pass
 
-    @dbus.service.method(DBUS_PROP_IFACE, in_signature='s', out_signature='')
+    @dbus.service.method(DBUS_PROP_IFACE, in_signature='s', out_signature='a{sv}')
     def GetAll(self, interface: str):
         if not interface in self.get_properties():
             raise InvalidArgsException()
         
-        return self.get_properties()[GATT_CHRC_IFACE]
+        return self.get_properties()[interface]
     
     @dbus.service.method(DBUS_PROP_IFACE, in_signature='ss', out_signature='v')
     def Get(self, interface: str, property: str):
@@ -178,12 +178,12 @@ class GattService(dbus.service.Object):
             result.append(chrc.path)
         return result
     
-    @dbus.service.method(DBUS_PROP_IFACE, in_signature='s', out_signature='')
+    @dbus.service.method(DBUS_PROP_IFACE, in_signature='s', out_signature='a{sv}')
     def GetAll(self, interface: str):
         if not interface in self.get_properties():
             raise InvalidArgsException()
         
-        return self.get_properties()[GATT_CHRC_IFACE]
+        return self.get_properties()[interface]
     
     @dbus.service.method(DBUS_PROP_IFACE, in_signature='ss', out_signature='v')
     def Get(self, interface: str, property: str):
@@ -246,12 +246,12 @@ class Advertisement(dbus.service.Object):
     def Release(self):
         pass
     
-    @dbus.service.method(DBUS_PROP_IFACE, in_signature='s', out_signature='')
+    @dbus.service.method(DBUS_PROP_IFACE, in_signature='s', out_signature='a{sv}')
     def GetAll(self, interface: str):
         if not interface in self.get_properties():
             raise InvalidArgsException()
         
-        return self.get_properties()[GATT_CHRC_IFACE]
+        return self.get_properties()[interface]
     
     @dbus.service.method(DBUS_PROP_IFACE, in_signature='ss', out_signature='v')
     def Get(self, interface: str, property: str):
