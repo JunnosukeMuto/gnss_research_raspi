@@ -320,6 +320,8 @@ def main():
     ad = Advertisement(bus, AD_PATH, [POS_SERVICE_UUID], AD_LOCAL_NAME)
     app.add_services([srv])
 
+    loop = GLib.MainLoop()
+
     try:
         gm.RegisterApplication(app.path, {})
         am.RegisterAdvertisement(ad.path, {})
@@ -329,7 +331,6 @@ def main():
 
     # メインループ
     try:
-        loop = GLib.MainLoop()
         loop.run()
 
     except KeyboardInterrupt:
