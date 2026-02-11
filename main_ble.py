@@ -163,9 +163,7 @@ class GattService(dbus.service.Object):
             GATT_SERVICE_IFACE: {
                 'UUID': dbus.String(self.uuid),
                 'Primary': dbus.Boolean(self.primary),
-                'Characteristics': dbus.Array(
-                        self.get_characteristic_paths(),
-                        signature='o')
+                'Includes': dbus.Array([], signature='o'),
             }
         }
     
