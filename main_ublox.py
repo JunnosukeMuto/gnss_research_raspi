@@ -26,9 +26,9 @@ DEBUG_UBLOX = False
 def getenv(key: str, path: bool = False) -> str:
     val = os.getenv(key)
     if val == None:
-        raise ValueError
+        raise ValueError()
     if path and not os.path.exists(val) and not DEBUG_UBLOX:
-        raise FileNotFoundError
+        raise FileNotFoundError()
     return val
 
 
