@@ -47,15 +47,7 @@ try:
     LOGDIR = Path(getenv("LOGDIR", path=True)) / "ublox/"
     SOCK_PATH = getenv("SOCK_PATH", path=True)
 
-except ValueError as e:
-    print(e)
-    sys.exit(1)
-
-except FileNotFoundError as e:
-    print(e)
-    sys.exit(1)
-
-except TypeError as e:
+except Exception as e:
     print(e)
     sys.exit(1)
 
