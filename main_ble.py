@@ -31,12 +31,12 @@ LE_AD_MANAGER_IFACE = "org.bluez.LEAdvertisingManager1"
 DBUS_OM_IFACE       = "org.freedesktop.DBus.ObjectManager"
 DBUS_PROP_IFACE     = "org.freedesktop.DBus.Properties"
 
-APP_PATH            = "/com/example/gnss-research"
-AD_PATH             = "/com/example/gnss-research/advertisement"
+APP_PATH            = "/com/example/gnssresearch"
+AD_PATH             = "/com/example/gnssresearch/advertisement"
 AD_LOCAL_NAME       = "gnss-research"
-POS_SERVICE_PATH    = "/com/example/gnss-research/position/service0"
+POS_SERVICE_PATH    = "/com/example/gnssresearch/position/service0"
 POS_SERVICE_UUID    = "70787d4e-af36-4bfb-901b-37133b5191bb"
-POS_CHRC_PATH       = "/com/example/gnss-research/position/service0/char0"
+POS_CHRC_PATH       = "/com/example/gnssresearch/position/service0/char0"
 POS_CHRC_UUID       = "0b53a515-bf15-44c8-a814-516de5f8a613"
 
 MTU_PAYLOAD_MAX_LEN = 20
