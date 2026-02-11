@@ -281,6 +281,8 @@ class GnssCharacteristic(Characteristic):
                 self.GNSS_CHRC_UUID,
                 ['notify'],
                 service)
+        
+        self.add_descriptor(ClientCharacteristicConfigurationDescriptor(bus, 0, self))
 
         self.notifying = False
         self.value: bytes = b''
@@ -321,6 +323,22 @@ class GnssCharacteristic(Characteristic):
         self.notifying = False
 
 
+class ClientCharacteristicConfigurationDescriptor(Descriptor):
+    CCCD_UUID = "00002902-0000-1000-8000-00805f9b34fb"
+
+    def __init__(self, bus, index, characteristic):
+        Descriptor.__init__(
+            self, bus, index,
+            self.CCCD_UUID,
+            ['read', 'write'],
+            characteristic)
+        self.value = [0x00, 0x00]
+
+    def ReadValue(self, options):
+        return self.value
+
+    def WriteValue(self, value, options):
+        self.value = value
 
 
 class Advertisement(dbus.service.Object):
