@@ -93,6 +93,9 @@ class GattCharacteristic(dbus.service.Object):
                 'Service': self.service_path,
                 'UUID': dbus.String(self.uuid),
                 'Flags': dbus.Array(['notify'], signature='s'),
+                'Descriptors': dbus.Array(
+                    [],
+                    signature='o')
             }
         }
     
@@ -163,7 +166,9 @@ class GattService(dbus.service.Object):
             GATT_SERVICE_IFACE: {
                 'UUID': dbus.String(self.uuid),
                 'Primary': dbus.Boolean(self.primary),
-                'Includes': dbus.Array([], signature='o'),
+                'Characteristics': dbus.Array(
+                    self.get_characteristic_paths(),
+                    signature='o')
             }
         }
     
@@ -200,7 +205,7 @@ class Application(dbus.service.Object):
     def __init__(self, conn: dbus.connection.Connection, path: str):
         self.path = dbus.ObjectPath(path)
         self.conn = conn
-        self.services = []
+        self.services: list[GattService] = []
         super().__init__(conn, path)
 
     def add_services(self, srvs: list[GattService]):
