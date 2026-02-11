@@ -33,7 +33,7 @@ def getenv(key: str, path: bool = False) -> str:
 
 
 try:
-    if (getenv("DEBUG_UBLOX")):
+    if (os.getenv("DEBUG_UBLOX")):
         DEBUG_UBLOX = True
 
     NTRIP_URL = getenv("NTRIP_URL")
