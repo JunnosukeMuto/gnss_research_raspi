@@ -90,9 +90,9 @@ class GattCharacteristic(dbus.service.Object):
     def get_properties(self):
         return {
             GATT_CHRC_IFACE: {
-                'Service': self.service_path,
-                'UUID': self.uuid,
-                'Flags': ['notify'],
+                'Service': dbus.ObjectPath(self.service_path),
+                'UUID': dbus.String(self.uuid),
+                'Flags': dbus.Array(['notify'], signature='s'),
             }
         }
     
@@ -161,8 +161,8 @@ class GattService(dbus.service.Object):
     def get_properties(self):
         return {
             GATT_SERVICE_IFACE: {
-                'UUID': self.uuid,
-                'Primary': self.primary,
+                'UUID': dbus.String(self.uuid),
+                'Primary': dbus.Boolean(self.primary),
                 'Characteristics': dbus.Array(
                         self.get_characteristic_paths(),
                         signature='o')
@@ -208,6 +208,8 @@ class Application(dbus.service.Object):
     @dbus.service.method(DBUS_OM_IFACE, out_signature='a{oa{sa{sv}}}')
     def GetManagedObjects(self):
         objs = {}
+
+        objs[self.path] = {}
 
         for srv in self.services:
             objs[srv.path] = srv.get_properties()
