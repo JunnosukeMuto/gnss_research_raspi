@@ -323,7 +323,10 @@ def main():
     loop = GLib.MainLoop()
 
     try:
-        gm.RegisterApplication(app.path, {})
+        gm.RegisterApplication(
+            app.path, {},
+            reply_handler=register_app_cb,
+            error_handler=register_app_error_cb)
         am.RegisterAdvertisement(ad.path, {})
     except dbus.exceptions.DBusException as e:
         print(e)
@@ -349,6 +352,14 @@ def main():
 
 def handle_sigterm(signum, frame):
     sys.exit(0)
+
+
+def register_app_cb():
+    print('GATT application registered')
+
+
+def register_app_error_cb(error):
+    print('Failed to register application: ' + str(error))
 
 
 if __name__ == "__main__":
