@@ -200,8 +200,8 @@ class Application(dbus.service.Object):
     def __init__(self, conn: dbus.connection.Connection, path: str, services: list[GattService]):
         self.path = dbus.ObjectPath(path)
         self.conn = conn
-        self.services: list[GattService] = services
         super().__init__(conn, self.path)
+        self.services: list[GattService] = services
 
     @dbus.service.method(DBUS_OM_IFACE, out_signature='a{oa{sa{sv}}}')
     def GetManagedObjects(self):
