@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 import os
+import signal
 import socket
 import dbus
 import dbus.exceptions
@@ -455,8 +456,22 @@ def find_adapter_ad(bus):
 
     return None
 
+
+def handle_sigterm(signum, frame):
+    print("sigterm")
+    mainloop.quit()
+
+
+def handle_sigint(signum, frame):
+    print("sigint")
+    mainloop.quit()
+
+
 def main():
     global mainloop
+
+    signal.signal(signal.SIGTERM, handle_sigterm)
+    signal.signal(signal.SIGINT, handle_sigint)
 
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
 
