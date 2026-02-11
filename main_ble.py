@@ -209,8 +209,6 @@ class Application(dbus.service.Object):
     def GetManagedObjects(self):
         objs = {}
 
-        objs[self.path] = {}
-
         for srv in self.services:
             objs[srv.path] = srv.get_properties()
             for c in srv.characteristics:
