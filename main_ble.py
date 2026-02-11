@@ -68,10 +68,10 @@ class GattCharacteristic(dbus.service.Object):
     """
     
     def __init__(self, conn: dbus.connection.Connection, path: str, uuid: str, service_path: str, soc_dgram: socket.socket):
-        self.path = path
+        self.path = dbus.ObjectPath(path)
         self.conn = conn
         self.uuid = uuid
-        self.service_path = service_path
+        self.service_path = dbus.ObjectPath(service_path)
         self.soc = soc_dgram
 
         self.notifying = False
@@ -90,7 +90,7 @@ class GattCharacteristic(dbus.service.Object):
     def get_properties(self):
         return {
             GATT_CHRC_IFACE: {
-                'Service': dbus.ObjectPath(self.service_path),
+                'Service': self.service_path,
                 'UUID': dbus.String(self.uuid),
                 'Flags': dbus.Array(['notify'], signature='s'),
             }
@@ -151,7 +151,7 @@ class GattService(dbus.service.Object):
     """
 
     def __init__(self, conn: dbus.connection.Connection, path: str, uuid: str, primary: bool):
-        self.path = path
+        self.path = dbus.ObjectPath(path)
         self.conn = conn
         self.uuid = uuid
         self.primary = primary
@@ -199,8 +199,8 @@ class Application(dbus.service.Object):
     the standard DBus.ObjectManager interface must be available on the root service path
     """
 
-    def __init__(self, conn: dbus.connection.Connection, object_path: str, services: list[GattService]):
-        self.path = object_path
+    def __init__(self, conn: dbus.connection.Connection, path: str, services: list[GattService]):
+        self.path = dbus.ObjectPath(path)
         self.conn = conn
         self.services: list[GattService] = services
         super().__init__(conn, self.path)
@@ -227,8 +227,8 @@ class Advertisement(dbus.service.Object):
     https://github.com/bluez/bluez/blob/master/doc/org.bluez.LEAdvertisement.rst
     """
 
-    def __init__(self, conn: dbus.connection.Connection, object_path: str, service_uuids: list[str], local_name: str):
-        self.path = object_path
+    def __init__(self, conn: dbus.connection.Connection, path: str, service_uuids: list[str], local_name: str):
+        self.path = dbus.ObjectPath(path)
         self.service_uuids = service_uuids
         self.local_name = local_name
         super().__init__(conn, self.path)
