@@ -484,18 +484,18 @@ def main():
 
     bus = dbus.SystemBus()
 
-    adapter = find_adapter_gatt(bus)
-    if not adapter:
+    adapter_gatt = find_adapter_gatt(bus)
+    if not adapter_gatt:
         print('GattManager1 interface not found')
         return
     
-    adapter = find_adapter_ad(bus)
-    if not adapter:
+    adapter_ad = find_adapter_ad(bus)
+    if not adapter_ad:
         print('LEAdvertisingManager1 interface not found')
         return
 
     service_manager = dbus.Interface(
-            bus.get_object(BLUEZ_SERVICE_NAME, adapter),
+            bus.get_object(BLUEZ_SERVICE_NAME, adapter_gatt),
             GATT_MANAGER_IFACE)
     
     # gnssサービスと通信するUNIXドメインソケット
@@ -507,12 +507,12 @@ def main():
 
     app = Application(bus, soc)
 
-    adapter_props = dbus.Interface(bus.get_object(BLUEZ_SERVICE_NAME, adapter),
+    adapter_props = dbus.Interface(bus.get_object(BLUEZ_SERVICE_NAME, adapter_ad),
                                    "org.freedesktop.DBus.Properties")
 
     adapter_props.Set("org.bluez.Adapter1", "Powered", dbus.Boolean(1))
 
-    ad_manager = dbus.Interface(bus.get_object(BLUEZ_SERVICE_NAME, adapter),
+    ad_manager = dbus.Interface(bus.get_object(BLUEZ_SERVICE_NAME, adapter_ad),
                                 LE_ADVERTISING_MANAGER_IFACE)
 
     gnss_advertisement = GnssAdvertisement(bus, 0)
