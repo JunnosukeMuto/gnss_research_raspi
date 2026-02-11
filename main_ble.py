@@ -1,4 +1,5 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
+# SPDX-License-Identifier: LGPL-2.1-or-later
 
 # https://www.bluetooth.com/specifications/specs/core-specification-6-0/
 # https://github.com/bluez/bluez/blob/master/test/example-gatt-server
@@ -10,72 +11,280 @@
 import os
 import signal
 import socket
-import sys
-import traceback
-from typing import Any
-from gi.repository import GLib
-
 import dbus
-import dbus.connection
-import dbus.proxies
-import dbus.service
+import dbus.exceptions
 import dbus.mainloop.glib
+import dbus.service
 
+import array
+from gi.repository import GLib
+import sys
 
-BLUEZ_NAME          = "org.bluez"
-GATT_MANAGER_IFACE  = "org.bluez.GattManager1"
-GATT_SERVICE_IFACE  = "org.bluez.GattService1"
-GATT_CHRC_IFACE     = "org.bluez.GattCharacteristic1"
-LE_AD_IFACE         = "org.bluez.LEAdvertisement1"
-LE_AD_MANAGER_IFACE = "org.bluez.LEAdvertisingManager1"
-DBUS_OM_IFACE       = "org.freedesktop.DBus.ObjectManager"
-DBUS_PROP_IFACE     = "org.freedesktop.DBus.Properties"
+from random import randint
 
-APP_PATH            = "/com/example/gnssresearch"
-AD_PATH             = "/com/example/gnssresearch/advertisement"
-AD_LOCAL_NAME       = "gnss-research"
-POS_SERVICE_PATH    = "/com/example/gnssresearch/position/service0"
-POS_SERVICE_UUID    = "70787d4e-af36-4bfb-901b-37133b5191bb"
-POS_CHRC_PATH       = "/com/example/gnssresearch/position/service0/char0"
-POS_CHRC_UUID       = "0b53a515-bf15-44c8-a814-516de5f8a613"
+mainloop = None
+
+BLUEZ_SERVICE_NAME = 'org.bluez'
+GATT_MANAGER_IFACE = 'org.bluez.GattManager1'
+DBUS_OM_IFACE =      'org.freedesktop.DBus.ObjectManager'
+DBUS_PROP_IFACE =    'org.freedesktop.DBus.Properties'
+
+GATT_SERVICE_IFACE = 'org.bluez.GattService1'
+GATT_CHRC_IFACE =    'org.bluez.GattCharacteristic1'
+GATT_DESC_IFACE =    'org.bluez.GattDescriptor1'
+
+LE_ADVERTISING_MANAGER_IFACE = 'org.bluez.LEAdvertisingManager1'
+LE_ADVERTISEMENT_IFACE = 'org.bluez.LEAdvertisement1'
 
 MTU_PAYLOAD_MAX_LEN = 20
 
 SOCK_PATH           = "/run/gnss-research/ble.sock"
 
 
-####################################
-# Gatt Exceptions
-####################################
-
-
 class InvalidArgsException(dbus.exceptions.DBusException):
     _dbus_error_name = 'org.freedesktop.DBus.Error.InvalidArgs'
-
 
 class NotSupportedException(dbus.exceptions.DBusException):
     _dbus_error_name = 'org.bluez.Error.NotSupported'
 
+class NotPermittedException(dbus.exceptions.DBusException):
+    _dbus_error_name = 'org.bluez.Error.NotPermitted'
 
-####################################
-# Gatt Object Tree
-####################################
+class InvalidValueLengthException(dbus.exceptions.DBusException):
+    _dbus_error_name = 'org.bluez.Error.InvalidValueLength'
+
+class FailedException(dbus.exceptions.DBusException):
+    _dbus_error_name = 'org.bluez.Error.Failed'
 
 
-class GattCharacteristic(dbus.service.Object):
+class Application(dbus.service.Object):
     """
-    https://github.com/bluez/bluez/blob/master/doc/org.bluez.GattCharacteristic.rst
+    org.bluez.GattApplication1 interface implementation
     """
-    
-    def __init__(self, conn: dbus.connection.Connection, path: str, uuid: str, service_path: str, soc_dgram: socket.socket):
-        self.path = dbus.ObjectPath(path)
-        self.conn = conn
+    def __init__(self, bus, soc):
+        self.path = '/'
+        self.services = []
+        dbus.service.Object.__init__(self, bus, self.path)
+        self.add_service(GnssService(bus, 0, soc))
+
+    def get_path(self):
+        return dbus.ObjectPath(self.path)
+
+    def add_service(self, service):
+        self.services.append(service)
+
+    @dbus.service.method(DBUS_OM_IFACE, out_signature='a{oa{sa{sv}}}')
+    def GetManagedObjects(self):
+        response = {}
+        print('GetManagedObjects')
+
+        for service in self.services:
+            response[service.get_path()] = service.get_properties()
+            chrcs = service.get_characteristics()
+            for chrc in chrcs:
+                response[chrc.get_path()] = chrc.get_properties()
+                descs = chrc.get_descriptors()
+                for desc in descs:
+                    response[desc.get_path()] = desc.get_properties()
+
+        return response
+
+
+class Service(dbus.service.Object):
+    """
+    org.bluez.GattService1 interface implementation
+    """
+    PATH_BASE = '/org/bluez/example/service'
+
+    def __init__(self, bus, index, uuid, primary):
+        self.path = self.PATH_BASE + str(index)
+        self.bus = bus
         self.uuid = uuid
-        self.service_path = dbus.ObjectPath(service_path)
-        self.soc = soc_dgram
+        self.primary = primary
+        self.characteristics = []
+        dbus.service.Object.__init__(self, bus, self.path)
+
+    def get_properties(self):
+        return {
+                GATT_SERVICE_IFACE: {
+                        'UUID': self.uuid,
+                        'Primary': self.primary,
+                        'Characteristics': dbus.Array(
+                                self.get_characteristic_paths(),
+                                signature='o')
+                }
+        }
+
+    def get_path(self):
+        return dbus.ObjectPath(self.path)
+
+    def add_characteristic(self, characteristic):
+        self.characteristics.append(characteristic)
+
+    def get_characteristic_paths(self):
+        result = []
+        for chrc in self.characteristics:
+            result.append(chrc.get_path())
+        return result
+
+    def get_characteristics(self):
+        return self.characteristics
+
+    @dbus.service.method(DBUS_PROP_IFACE,
+                         in_signature='s',
+                         out_signature='a{sv}')
+    def GetAll(self, interface):
+        if interface != GATT_SERVICE_IFACE:
+            raise InvalidArgsException()
+
+        return self.get_properties()[GATT_SERVICE_IFACE]
+
+
+class Characteristic(dbus.service.Object):
+    """
+    org.bluez.GattCharacteristic1 interface implementation
+    """
+    def __init__(self, bus, index, uuid, flags, service):
+        self.path = service.path + '/char' + str(index)
+        self.bus = bus
+        self.uuid = uuid
+        self.service = service
+        self.flags = flags
+        self.descriptors = []
+        dbus.service.Object.__init__(self, bus, self.path)
+
+    def get_properties(self):
+        return {
+                GATT_CHRC_IFACE: {
+                        'Service': self.service.get_path(),
+                        'UUID': self.uuid,
+                        'Flags': self.flags,
+                        'Descriptors': dbus.Array(
+                                self.get_descriptor_paths(),
+                                signature='o')
+                }
+        }
+
+    def get_path(self):
+        return dbus.ObjectPath(self.path)
+
+    def add_descriptor(self, descriptor):
+        self.descriptors.append(descriptor)
+
+    def get_descriptor_paths(self):
+        result = []
+        for desc in self.descriptors:
+            result.append(desc.get_path())
+        return result
+
+    def get_descriptors(self):
+        return self.descriptors
+
+    @dbus.service.method(DBUS_PROP_IFACE,
+                         in_signature='s',
+                         out_signature='a{sv}')
+    def GetAll(self, interface):
+        if interface != GATT_CHRC_IFACE:
+            raise InvalidArgsException()
+
+        return self.get_properties()[GATT_CHRC_IFACE]
+
+    @dbus.service.method(GATT_CHRC_IFACE,
+                        in_signature='a{sv}',
+                        out_signature='ay')
+    def ReadValue(self, options):
+        print('Default ReadValue called, returning error')
+        raise NotSupportedException()
+
+    @dbus.service.method(GATT_CHRC_IFACE, in_signature='aya{sv}')
+    def WriteValue(self, value, options):
+        print('Default WriteValue called, returning error')
+        raise NotSupportedException()
+
+    @dbus.service.method(GATT_CHRC_IFACE)
+    def StartNotify(self):
+        print('Default StartNotify called, returning error')
+        raise NotSupportedException()
+
+    @dbus.service.method(GATT_CHRC_IFACE)
+    def StopNotify(self):
+        print('Default StopNotify called, returning error')
+        raise NotSupportedException()
+
+    @dbus.service.signal(DBUS_PROP_IFACE,
+                         signature='sa{sv}as')
+    def PropertiesChanged(self, interface, changed, invalidated):
+        pass
+
+
+class Descriptor(dbus.service.Object):
+    """
+    org.bluez.GattDescriptor1 interface implementation
+    """
+    def __init__(self, bus, index, uuid, flags, characteristic):
+        self.path = characteristic.path + '/desc' + str(index)
+        self.bus = bus
+        self.uuid = uuid
+        self.flags = flags
+        self.chrc = characteristic
+        dbus.service.Object.__init__(self, bus, self.path)
+
+    def get_properties(self):
+        return {
+                GATT_DESC_IFACE: {
+                        'Characteristic': self.chrc.get_path(),
+                        'UUID': self.uuid,
+                        'Flags': self.flags,
+                }
+        }
+
+    def get_path(self):
+        return dbus.ObjectPath(self.path)
+
+    @dbus.service.method(DBUS_PROP_IFACE,
+                         in_signature='s',
+                         out_signature='a{sv}')
+    def GetAll(self, interface):
+        if interface != GATT_DESC_IFACE:
+            raise InvalidArgsException()
+
+        return self.get_properties()[GATT_DESC_IFACE]
+
+    @dbus.service.method(GATT_DESC_IFACE,
+                        in_signature='a{sv}',
+                        out_signature='ay')
+    def ReadValue(self, options):
+        print ('Default ReadValue called, returning error')
+        raise NotSupportedException()
+
+    @dbus.service.method(GATT_DESC_IFACE, in_signature='aya{sv}')
+    def WriteValue(self, value, options):
+        print('Default WriteValue called, returning error')
+        raise NotSupportedException()
+
+
+class GnssService(Service):
+
+    GNSS_SVC_UUID = "70787d4e-af36-4bfb-901b-37133b5191bb"
+
+    def __init__(self, bus, index, soc):
+        Service.__init__(self, bus, index, self.GNSS_SVC_UUID, True)
+        self.add_characteristic(GnssCharacteristic(bus, 0, self, soc))
+
+class GnssCharacteristic(Characteristic):
+
+    GNSS_CHRC_UUID = "0b53a515-bf15-44c8-a814-516de5f8a613"
+
+    def __init__(self, bus, index, service, soc):
+        Characteristic.__init__(
+                self, bus, index,
+                self.GNSS_CHRC_UUID,
+                ['notify'],
+                service)
 
         self.notifying = False
         self.value: bytes = b''
+        self.soc = soc
 
         # 保持しないとGCでwatchが消える恐れあり
         self._io_watch_id = GLib.io_add_watch(
@@ -84,21 +293,6 @@ class GattCharacteristic(dbus.service.Object):
             self._on_socket_readable
         )
 
-        super().__init__(conn, path)
-
-    # No Descriptors, notify only
-    def get_properties(self):
-        return {
-            GATT_CHRC_IFACE: {
-                'Service': self.service_path,
-                'UUID': dbus.String(self.uuid),
-                'Flags': dbus.Array(['notify'], signature='s'),
-                'Descriptors': dbus.Array(
-                    [],
-                    signature='o')
-            }
-        }
-    
     def notify_value(self):
         if self.notifying:
             # yはuint8なので1バイト、ayはバイト列になる
@@ -118,245 +312,114 @@ class GattCharacteristic(dbus.service.Object):
         self.notify_value()
 
         return True
-        
-    @dbus.service.method(GATT_CHRC_IFACE, in_signature='', out_signature='')
+
     def StartNotify(self):
         self.notifying = True
         self.notify_value()     # 即Notify（ベストプラクティス）
 
-    @dbus.service.method(GATT_CHRC_IFACE, in_signature='', out_signature='')
     def StopNotify(self):
         self.notifying = False
 
-    @dbus.service.signal(DBUS_PROP_IFACE, signature='sa{sv}as')
-    def PropertiesChanged(self, interface: str, changed: dict[str, Any], invalidated: list[str]):
-        pass
-
-    @dbus.service.method(DBUS_PROP_IFACE, in_signature='s', out_signature='a{sv}')
-    def GetAll(self, interface: str):
-        if not interface in self.get_properties():
-            raise InvalidArgsException()
-        
-        return self.get_properties()[interface]
-    
-    @dbus.service.method(DBUS_PROP_IFACE, in_signature='ss', out_signature='v')
-    def Get(self, interface: str, property: str):
-        props = self.get_properties()
-        if interface in props and property in props[interface]:
-            return props[interface][property]
-        
-        raise InvalidArgsException()
-        
-
-class GattService(dbus.service.Object):
-    """
-    https://github.com/bluez/bluez/blob/master/doc/org.bluez.GattService.rst
-    """
-
-    def __init__(self, conn: dbus.connection.Connection, path: str, uuid: str, primary: bool):
-        self.path = dbus.ObjectPath(path)
-        self.conn = conn
-        self.uuid = uuid
-        self.primary = primary
-        self.characteristics: list[GattCharacteristic] = []
-        super().__init__(conn, path)
-
-    def get_properties(self):
-        return {
-            GATT_SERVICE_IFACE: {
-                'UUID': dbus.String(self.uuid),
-                'Primary': dbus.Boolean(self.primary),
-                'Characteristics': dbus.Array(
-                    self.get_characteristic_paths(),
-                    signature='o')
-            }
-        }
-    
-    def add_chrcs(self, chrcs: list[GattCharacteristic]):
-        self.characteristics.extend(chrcs)
-
-    def get_characteristic_paths(self):
-        result = []
-        for chrc in self.characteristics:
-            result.append(chrc.path)
-        return result
-    
-    @dbus.service.method(DBUS_PROP_IFACE, in_signature='s', out_signature='a{sv}')
-    def GetAll(self, interface: str):
-        if not interface in self.get_properties():
-            raise InvalidArgsException()
-        
-        return self.get_properties()[interface]
-    
-    @dbus.service.method(DBUS_PROP_IFACE, in_signature='ss', out_signature='v')
-    def Get(self, interface: str, property: str):
-        props = self.get_properties()
-        if interface in props and property in props[interface]:
-            return props[interface][property]
-        
-        raise InvalidArgsException()
 
 
-class Application(dbus.service.Object):
-    """
-    the standard DBus.ObjectManager interface must be available on the root service path
-    """
-
-    def __init__(self, conn: dbus.connection.Connection, path: str):
-        self.path = dbus.ObjectPath(path)
-        self.conn = conn
-        self.services: list[GattService] = []
-        super().__init__(conn, path)
-
-    def add_services(self, srvs: list[GattService]):
-        self.services.extend(srvs)
-
-    @dbus.service.method(DBUS_OM_IFACE, out_signature='a{oa{sa{sv}}}')
-    def GetManagedObjects(self):
-        objs = {}
-
-        for srv in self.services:
-            objs[srv.path] = srv.get_properties()
-            for c in srv.characteristics:
-                objs[c.path] = c.get_properties()
-
-        return objs
-    
-
-####################################
-# LE Advertising
-####################################
-    
 
 class Advertisement(dbus.service.Object):
-    """
-    https://github.com/bluez/bluez/blob/master/doc/org.bluez.LEAdvertisement.rst
-    """
+    PATH_BASE = '/org/bluez/example/advertisement'
 
-    def __init__(self, conn: dbus.connection.Connection, path: str, service_uuids: list[str], local_name: str):
-        self.path = dbus.ObjectPath(path)
-        self.service_uuids = service_uuids
-        self.local_name = local_name
-        super().__init__(conn, self.path)
+    def __init__(self, bus, index, advertising_type):
+        self.path = self.PATH_BASE + str(index)
+        self.bus = bus
+        self.ad_type = advertising_type
+        self.service_uuids = None
+        self.manufacturer_data = None
+        self.solicit_uuids = None
+        self.service_data = None
+        self.local_name = None
+        self.include_tx_power = False
+        self.data = None
+        dbus.service.Object.__init__(self, bus, self.path)
 
     def get_properties(self):
-        return {
-            LE_AD_IFACE: {
-                'Type': dbus.String('peripheral'),
-                'ServiceUUIDs': dbus.Array(self.service_uuids, signature='s'),
-                'LocalName': dbus.String(self.local_name),
-            }
-        }
-    
-    @dbus.service.method(LE_AD_IFACE, in_signature='', out_signature='')
-    def Release(self):
-        pass
-    
-    @dbus.service.method(DBUS_PROP_IFACE, in_signature='s', out_signature='a{sv}')
-    def GetAll(self, interface: str):
-        if not interface in self.get_properties():
+        properties = dict()
+        properties['Type'] = self.ad_type
+        if self.service_uuids is not None:
+            properties['ServiceUUIDs'] = dbus.Array(self.service_uuids,
+                                                    signature='s')
+        if self.solicit_uuids is not None:
+            properties['SolicitUUIDs'] = dbus.Array(self.solicit_uuids,
+                                                    signature='s')
+        if self.manufacturer_data is not None:
+            properties['ManufacturerData'] = dbus.Dictionary(
+                self.manufacturer_data, signature='qv')
+        if self.service_data is not None:
+            properties['ServiceData'] = dbus.Dictionary(self.service_data,
+                                                        signature='sv')
+        if self.local_name is not None:
+            properties['LocalName'] = dbus.String(self.local_name)
+        if self.include_tx_power:
+            properties['Includes'] = dbus.Array(["tx-power"], signature='s')
+
+        if self.data is not None:
+            properties['Data'] = dbus.Dictionary(
+                self.data, signature='yv')
+        return {LE_ADVERTISEMENT_IFACE: properties}
+
+    def get_path(self):
+        return dbus.ObjectPath(self.path)
+
+    def add_service_uuid(self, uuid):
+        if not self.service_uuids:
+            self.service_uuids = []
+        self.service_uuids.append(uuid)
+
+    def add_solicit_uuid(self, uuid):
+        if not self.solicit_uuids:
+            self.solicit_uuids = []
+        self.solicit_uuids.append(uuid)
+
+    def add_manufacturer_data(self, manuf_code, data):
+        if not self.manufacturer_data:
+            self.manufacturer_data = dbus.Dictionary({}, signature='qv')
+        self.manufacturer_data[manuf_code] = dbus.Array(data, signature='y')
+
+    def add_service_data(self, uuid, data):
+        if not self.service_data:
+            self.service_data = dbus.Dictionary({}, signature='sv')
+        self.service_data[uuid] = dbus.Array(data, signature='y')
+
+    def add_local_name(self, name):
+        if not self.local_name:
+            self.local_name = ""
+        self.local_name = dbus.String(name)
+
+    def add_data(self, ad_type, data):
+        if not self.data:
+            self.data = dbus.Dictionary({}, signature='yv')
+        self.data[ad_type] = dbus.Array(data, signature='y')
+
+    @dbus.service.method(DBUS_PROP_IFACE,
+                         in_signature='s',
+                         out_signature='a{sv}')
+    def GetAll(self, interface):
+        print('GetAll')
+        if interface != LE_ADVERTISEMENT_IFACE:
             raise InvalidArgsException()
-        
-        return self.get_properties()[interface]
-    
-    @dbus.service.method(DBUS_PROP_IFACE, in_signature='ss', out_signature='v')
-    def Get(self, interface: str, property: str):
-        props = self.get_properties()
-        if interface in props and property in props[interface]:
-            return props[interface][property]
-        
-        raise InvalidArgsException()
+        print('returning props')
+        return self.get_properties()[LE_ADVERTISEMENT_IFACE]
+
+    @dbus.service.method(LE_ADVERTISEMENT_IFACE,
+                         in_signature='',
+                         out_signature='')
+    def Release(self):
+        print('%s: Released!' % self.path)
 
 
-####################################
-# Main loop
-####################################
+class GnssAdvertisement(Advertisement):
 
-
-def main():
-    signal.signal(signal.SIGTERM, handle_sigterm)
-
-    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
-    bus = dbus.SystemBus()
-
-    # https://www.bluez.org/bluez-5-api-introduction-and-porting-guide/
-    # org.bluezのルートオブジェクトはObjectManager
-    bluez_root_obj = bus.get_object(BLUEZ_NAME, '/')
-    bluez_om = dbus.Interface(bluez_root_obj, DBUS_OM_IFACE)
-    
-    # org.bluezの公開するオブジェクトからGattManager1、LEAdvertisingManager1を見つける
-    bluez_obj_tree = bluez_om.GetManagedObjects()
-    
-    found_gm: dbus.proxies.ProxyObject | None = None
-    found_am: dbus.proxies.ProxyObject | None = None
-
-    for o_path, iface_dict in bluez_obj_tree.items():
-        if GATT_MANAGER_IFACE in iface_dict.keys():
-            found_gm = bus.get_object(BLUEZ_NAME, o_path)
-        if LE_AD_MANAGER_IFACE in iface_dict.keys():
-            found_am = bus.get_object(BLUEZ_NAME, o_path)
-
-    if not found_gm:
-        print(f"{GATT_MANAGER_IFACE} interface not found")
-        return
-    
-    if not found_am:
-        print(f"{LE_AD_MANAGER_IFACE} interface not found")
-        return
-    
-    # 発見
-    gm = dbus.Interface(found_gm, GATT_MANAGER_IFACE)
-    am = dbus.Interface(found_am, LE_AD_MANAGER_IFACE)
-
-    # gnssサービスと通信するUNIXドメインソケット
-    if os.path.exists(SOCK_PATH):
-        os.unlink(SOCK_PATH)
-    soc = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-    soc.bind((SOCK_PATH))
-    soc.setblocking(False)
-    
-    # GattServiceの後にGattCharacteristicをインスタンス化すること（export順）
-    srv = GattService(bus, POS_SERVICE_PATH, POS_SERVICE_UUID, True)
-    chrc = GattCharacteristic(bus, POS_CHRC_PATH, POS_CHRC_UUID, POS_SERVICE_PATH, soc)
-    srv.add_chrcs([chrc])
-
-    # Register
-    app = Application(bus, APP_PATH)
-    ad = Advertisement(bus, AD_PATH, [POS_SERVICE_UUID], AD_LOCAL_NAME)
-    app.add_services([srv])
-
-    loop = GLib.MainLoop()
-
-    try:
-        gm.RegisterApplication(
-            app.path, {},
-            reply_handler=register_app_cb,
-            error_handler=register_app_error_cb)
-        am.RegisterAdvertisement(ad.path, {})
-    except dbus.exceptions.DBusException as e:
-        print(e)
-        return
-
-    # メインループ
-    try:
-        loop.run()
-
-    except KeyboardInterrupt:
-        pass
-
-    except SystemExit:
-        pass
-
-    except Exception:
-        traceback.print_exc()
-
-    finally:
-        am.UnregisterAdvertisement(ad.path)
-        dbus.service.Object.remove_from_connection(ad.path)
-
-
-def handle_sigterm(signum, frame):
-    sys.exit(0)
+    def __init__(self, bus, index):
+        Advertisement.__init__(self, bus, index, 'peripheral')
+        self.add_service_uuid("70787d4e-af36-4bfb-901b-37133b5191bb")
+        self.add_local_name('GnssAdvertisement')
 
 
 def register_app_cb():
@@ -365,7 +428,112 @@ def register_app_cb():
 
 def register_app_error_cb(error):
     print('Failed to register application: ' + str(error))
+    mainloop.quit()
 
 
-if __name__ == "__main__":
+def register_ad_cb():
+    print('Advertisement registered')
+
+
+def register_ad_error_cb(error):
+    print('Failed to register advertisement: ' + str(error))
+    mainloop.quit()
+
+
+def find_adapter_gatt(bus):
+    remote_om = dbus.Interface(bus.get_object(BLUEZ_SERVICE_NAME, '/'),
+                               DBUS_OM_IFACE)
+    objects = remote_om.GetManagedObjects()
+
+    for o, props in objects.items():
+        if GATT_MANAGER_IFACE in props.keys():
+            return o
+
+    return None
+
+
+def find_adapter_ad(bus):
+    remote_om = dbus.Interface(bus.get_object(BLUEZ_SERVICE_NAME, '/'),
+                               DBUS_OM_IFACE)
+    objects = remote_om.GetManagedObjects()
+
+    for o, props in objects.items():
+        if LE_ADVERTISING_MANAGER_IFACE in props:
+            return o
+
+    return None
+
+
+def handle_sigterm(signum, frame):
+    print("sigterm")
+    mainloop.quit()
+
+
+def handle_sigint(signum, frame):
+    print("sigint")
+    mainloop.quit()
+
+
+def main():
+    global mainloop
+
+    signal.signal(signal.SIGTERM, handle_sigterm)
+    signal.signal(signal.SIGINT, handle_sigint)
+
+    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+
+    bus = dbus.SystemBus()
+
+    adapter = find_adapter_gatt(bus)
+    if not adapter:
+        print('GattManager1 interface not found')
+        return
+    
+    adapter = find_adapter_ad(bus)
+    if not adapter:
+        print('LEAdvertisingManager1 interface not found')
+        return
+
+    service_manager = dbus.Interface(
+            bus.get_object(BLUEZ_SERVICE_NAME, adapter),
+            GATT_MANAGER_IFACE)
+    
+    # gnssサービスと通信するUNIXドメインソケット
+    if os.path.exists(SOCK_PATH):
+        os.unlink(SOCK_PATH)
+    soc = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+    soc.bind((SOCK_PATH))
+    soc.setblocking(False)
+
+    app = Application(bus, soc)
+
+    adapter_props = dbus.Interface(bus.get_object(BLUEZ_SERVICE_NAME, adapter),
+                                   "org.freedesktop.DBus.Properties")
+
+    adapter_props.Set("org.bluez.Adapter1", "Powered", dbus.Boolean(1))
+
+    ad_manager = dbus.Interface(bus.get_object(BLUEZ_SERVICE_NAME, adapter),
+                                LE_ADVERTISING_MANAGER_IFACE)
+
+    gnss_advertisement = GnssAdvertisement(bus, 0)
+
+    mainloop = GLib.MainLoop()
+
+    print('Registering GATT application...')
+
+    service_manager.RegisterApplication(app.get_path(), {},
+                                    reply_handler=register_app_cb,
+                                    error_handler=register_app_error_cb)
+    
+    ad_manager.RegisterAdvertisement(gnss_advertisement.get_path(), {},
+                                     reply_handler=register_ad_cb,
+                                     error_handler=register_ad_error_cb)
+
+    mainloop.run()
+
+    ad_manager.UnregisterAdvertisement(gnss_advertisement)
+    print('Advertisement unregistered')
+    dbus.service.Object.remove_from_connection(gnss_advertisement)
+
+if __name__ == '__main__':
     main()
