@@ -48,6 +48,11 @@ SOCK_PATH           = "/run/gnss-research/ble.sock"
 # Gatt Exceptions
 ####################################
 
+
+class InvalidArgsException(dbus.exceptions.DBusException):
+    _dbus_error_name = 'org.freedesktop.DBus.Error.InvalidArgs'
+
+
 class NotSupportedException(dbus.exceptions.DBusException):
     _dbus_error_name = 'org.bluez.Error.NotSupported'
 
@@ -125,8 +130,19 @@ class GattCharacteristic(dbus.service.Object):
         pass
 
     @dbus.service.method(DBUS_PROP_IFACE, in_signature='s', out_signature='')
-    def GetAll(self, interface):
+    def GetAll(self, interface: str):
+        if not interface in self.get_properties():
+            raise InvalidArgsException()
+        
         return self.get_properties()[GATT_CHRC_IFACE]
+    
+    @dbus.service.method(DBUS_PROP_IFACE, in_signature='ss', out_signature='v')
+    def Get(self, interface: str, property: str):
+        props = self.get_properties()
+        if interface in props and property in props[interface]:
+            return props[interface][property]
+        
+        raise InvalidArgsException()
         
 
 class GattService(dbus.service.Object):
@@ -163,8 +179,19 @@ class GattService(dbus.service.Object):
         return result
     
     @dbus.service.method(DBUS_PROP_IFACE, in_signature='s', out_signature='')
-    def GetAll(self, interface):
-        return self.get_properties()[GATT_SERVICE_IFACE]
+    def GetAll(self, interface: str):
+        if not interface in self.get_properties():
+            raise InvalidArgsException()
+        
+        return self.get_properties()[GATT_CHRC_IFACE]
+    
+    @dbus.service.method(DBUS_PROP_IFACE, in_signature='ss', out_signature='v')
+    def Get(self, interface: str, property: str):
+        props = self.get_properties()
+        if interface in props and property in props[interface]:
+            return props[interface][property]
+        
+        raise InvalidArgsException()
 
 
 class Application(dbus.service.Object):
@@ -209,7 +236,7 @@ class Advertisement(dbus.service.Object):
     def get_properties(self):
         return {
             LE_AD_IFACE: {
-                'Type': 'peripheral',
+                'Type': dbus.String('peripheral'),
                 'ServiceUUIDs': dbus.Array(self.service_uuids, signature='s'),
                 'LocalName': dbus.String(self.local_name),
             }
@@ -220,8 +247,19 @@ class Advertisement(dbus.service.Object):
         pass
     
     @dbus.service.method(DBUS_PROP_IFACE, in_signature='s', out_signature='')
-    def GetAll(self, interface):
-        return self.get_properties()[LE_AD_IFACE]
+    def GetAll(self, interface: str):
+        if not interface in self.get_properties():
+            raise InvalidArgsException()
+        
+        return self.get_properties()[GATT_CHRC_IFACE]
+    
+    @dbus.service.method(DBUS_PROP_IFACE, in_signature='ss', out_signature='v')
+    def Get(self, interface: str, property: str):
+        props = self.get_properties()
+        if interface in props and property in props[interface]:
+            return props[interface][property]
+        
+        raise InvalidArgsException()
 
 
 ####################################
