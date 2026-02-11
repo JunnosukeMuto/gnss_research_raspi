@@ -84,7 +84,7 @@ class GattCharacteristic(dbus.service.Object):
             self._on_socket_readable
         )
 
-        super().__init__(conn, self.path)
+        super().__init__(conn, path)
 
     # No Descriptors, notify only
     def get_properties(self):
@@ -156,7 +156,7 @@ class GattService(dbus.service.Object):
         self.uuid = uuid
         self.primary = primary
         self.characteristics: list[GattCharacteristic] = []
-        super().__init__(conn, self.path)
+        super().__init__(conn, path)
 
     def get_properties(self):
         return {
@@ -197,12 +197,14 @@ class Application(dbus.service.Object):
     the standard DBus.ObjectManager interface must be available on the root service path
     """
 
-    def __init__(self, conn: dbus.connection.Connection, path: str, services: list[GattService]):
+    def __init__(self, conn: dbus.connection.Connection, path: str):
         self.path = dbus.ObjectPath(path)
         self.conn = conn
         self.services = []
-        super().__init__(conn, self.path)
-        self.services = services
+        super().__init__(conn, path)
+
+    def add_services(self, srvs: list[GattService]):
+        self.services.extend(srvs)
 
     @dbus.service.method(DBUS_OM_IFACE, out_signature='a{oa{sa{sv}}}')
     def GetManagedObjects(self):
@@ -314,8 +316,9 @@ def main():
     srv.add_chrcs([chrc])
 
     # Register
-    app = Application(bus, APP_PATH, [srv])
+    app = Application(bus, APP_PATH)
     ad = Advertisement(bus, AD_PATH, [POS_SERVICE_UUID], AD_LOCAL_NAME)
+    app.add_services([srv])
 
     try:
         gm.RegisterApplication(app.path, {})
