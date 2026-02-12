@@ -437,7 +437,6 @@ class GnssAdvertisement(Advertisement):
     def __init__(self, bus, index):
         Advertisement.__init__(self, bus, index, 'peripheral')
         self.add_service_uuid("70787d4e-af36-4bfb-901b-37133b5191bb")
-        self.add_local_name('GnssAdvertisement')
         self.add_manufacturer_data(0xFFFF, [0x12, 0x34, 0x56])
 
 
